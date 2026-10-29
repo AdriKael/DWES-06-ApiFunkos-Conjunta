@@ -1,0 +1,7 @@
+﻿services:
+  apifunkosconjunta:
+    image: apifunkosconjunta
+    build:
+      context: .
+      dockerfile: ApiFunkosConjunta/Dockerfile
+
