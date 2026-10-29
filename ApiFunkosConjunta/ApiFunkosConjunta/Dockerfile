@@ -1,23 +1,39 @@
-﻿FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
-USER $APP_UID
-WORKDIR /app
-EXPOSE 8080
-EXPOSE 8081
-
+﻿# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["ApiFunkosConjunta/ApiFunkosConjunta.csproj", "ApiFunkosConjunta/"]
-RUN dotnet restore "ApiFunkosConjunta/ApiFunkosConjunta.csproj"
-COPY . .
-WORKDIR "/src/ApiFunkosConjunta"
-RUN dotnet build "./ApiFunkosConjunta.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./ApiFunkosConjunta.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+COPY Directory.Packages.props ./
+COPY Directory.Build.props ./
 
-FROM base AS final
+COPY ApiFunkosConjunta/*.csproj ./ApiFunkosConjunta/
+
+RUN dotnet restore ApiFunkosConjunta/ApiFunkosConjunta.csproj
+
+COPY ApiFunkosConjunta/ ./ApiFunkosConjunta/
+
+RUN dotnet publish ApiFunkosConjunta/ApiFunkosConjunta.csproj -c Release -o /app/publish --no-restore
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-COPY --from=publish /app/publish .
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Directorio de logs escribible por el usuario de la aplicacion
+RUN mkdir -p /app/logs && chown -R app:app /app/logs
+
+USER app
+
+COPY --from=build /app/publish .
+
+EXPOSE 8080
+
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_ENVIRONMENT=Production
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
 ENTRYPOINT ["dotnet", "ApiFunkosConjunta.dll"]
